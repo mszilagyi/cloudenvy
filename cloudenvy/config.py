@@ -13,6 +13,7 @@ CONFIG_DEFAULTS = {
         'remote_user': 'ubuntu',
         'auto_provision': False,
         'forward_agent': True,
+        'default_cloud': None,
         'dotfiles': '.vimrc, .gitconfig, .gitignore, .screenrc',
         'sec_groups': [
             'icmp, -1, -1, 0.0.0.0/0',
@@ -27,6 +28,18 @@ class EnvyConfig(object):
 
     def __init__(self, args):
         self.args = args
+
+    def _set_working_cloud(self, cloud_name, config):
+        """Sets which cloud to operate on based on config values and parameters
+        """
+        if cloud_name in config['cloudenvy']['clouds'].keys():
+            config['cloudenvy'].update(
+                {'cloud': config['cloudenvy']['clouds'][cloud_name]})
+        else:
+            logging.error("Cloud %s is not found in your config" % cloud_name)
+            logging.debug("Clouds Found %s" % ", ".join(
+                          config['cloudenvy']['clouds'].keys()))
+            sys.exit(1)
 
     def get_config(self):
         args = self.args
@@ -68,16 +81,16 @@ class EnvyConfig(object):
             config['cloudenvy']['keypair_location'] = full_path
 
         #TODO(jakedahn): I think this is stupid, there is probably a better way
-        # Updae config dict with which cloud to use.
+        # Update config dict with which cloud to use.
         if args.cloud:
-            if args.cloud in config['cloudenvy']['clouds'].keys():
-                config['cloudenvy'].update(
-                    {'cloud': config['cloudenvy']['clouds'][args.cloud]})
-            else:
-                logging.error("Cloud %s is not found in your config" % args.cloud)
-                logging.debug("Clouds Found %s" % ", ".join(config['cloudenvy']['clouds'].keys()))
-                sys.exit(1)
+            # If a specific cloud is requested, use it.
+            self._set_working_cloud(args.cloud, config)
+        elif 'default_cloud' in config['cloudenvy']:
+            # If no specific cloud is requested, try the default.
+            default_cloud = config['cloudenvy']['default_cloud']
+            self._set_working_cloud(default_cloud, config)
         else:
+            # No specific or default, just take whatever is first in the list.
             config['cloudenvy'].update(
                 {'cloud': config['cloudenvy']['clouds'].itervalues().next()})
 
@@ -87,8 +100,8 @@ class EnvyConfig(object):
 
     def _validate_config(self, config, user_config_path, project_config_path):
         if 'image_name' in config['project_config']:
-            logging.warning('Please note that using `image_name` option in your '
-                          'Envyfile has been deprecated. Please use the '
+            logging.warning('Please note that using `image_name` option in '
+                          'your Envyfile has been deprecated. Please use the '
                           '`image` option instead. `image_name` will no '
                           'longer be supported as of December 01, 2012.')
         if 'image_id' in config['project_config']:
